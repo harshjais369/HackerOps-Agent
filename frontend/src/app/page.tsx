@@ -215,7 +215,8 @@ export default function Dashboard() {
 
       // 2. Connect to WebSocket for instant real-time event streaming if open
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsPort = process.env.NEXT_PUBLIC_WS_PORT || "8080";
+      const isLocalHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+      const wsPort = process.env.NEXT_PUBLIC_WS_PORT || (isLocalHost ? "8000" : "8080");
       const wsHost = process.env.NEXT_PUBLIC_WS_HOST || `${window.location.hostname}:${wsPort}`;
       const wsUrl =
         process.env.NEXT_PUBLIC_WS_URL ||
