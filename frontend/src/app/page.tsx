@@ -98,9 +98,11 @@ export default function Dashboard() {
       }));
 
       // Connect to WebSocket for live event streaming
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsHost = process.env.NEXT_PUBLIC_WS_HOST || `${window.location.hostname}:8080`;
       const wsUrl =
-        (process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000") +
-        `/ws/scans/${scanId}`;
+        process.env.NEXT_PUBLIC_WS_URL ||
+        `${wsProtocol}//${wsHost}/ws/scans/${scanId}`;
       
       if (wsRef.current) {
         wsRef.current.close();
