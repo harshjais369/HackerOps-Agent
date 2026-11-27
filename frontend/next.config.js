@@ -1,3 +1,14 @@
+// Suppress DEP0060 deprecation warning caused by internal http-proxy using util._extend on Node 22+
+const util = require('util');
+try {
+  Object.defineProperty(util, '_extend', {
+    value: Object.assign,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+} catch (_) {}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
