@@ -15,14 +15,16 @@ def scan_ports(target_host: str, top_ports: int = 50):
         "-sV",
         "--version-light",
         "-Pn",
-        "-T3",
+        "-T4",
+        "--max-retries", "1",
+        "--host-timeout", "10s",
         f"--top-ports={top_ports}",
         "--open",
         "-oX", "-",
         target_host
     ]
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45, text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15, text=True)
         if proc.returncode != 0 and not proc.stdout:
             return {"status": "error", "message": proc.stderr.strip(), "ports": []}
         

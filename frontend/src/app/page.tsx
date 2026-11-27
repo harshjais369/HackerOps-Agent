@@ -48,12 +48,16 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [bottomTab, setBottomTab] = useState<"findings" | "patches">("findings");
   const wsRef = useRef<WebSocket | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clean up WebSocket on unmount
+  // Clean up WebSocket and polling interval on unmount
   useEffect(() => {
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
+      }
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
       }
     };
   }, []);
@@ -97,47 +101,160 @@ export default function Dashboard() {
         resolved_ip: scanData.resolved_ip,
       }));
 
-      // Connect to WebSocket for live event streaming
+      // 1. Start active HTTP polling fallback (guaranteed to work across all firewalls/EC2)
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const detail = await fetchScanDetail(scanId);
+          if (!detail) return;
+
+          setScanState((prev) => {
+            const newNodes = detail.nodes && detail.nodes.length > 0 ? detail.nodes : prev.nodes;
+            const newEdges = detail.edges && detail.edges.length > 0 ? detail.edges : prev.edges;
+            const newFindings = detail.findings && detail.findings.length > 0 ? detail.findings : prev.findings;
+            const newPatches = detail.patches && detail.patches.length > 0 ? detail.patches : prev.patches;
+
+            let computedProgress = prev.progress;
+            let computedState = prev.currentState;
+
+            if (detail.status === "completed") {
+              computedProgress = 100;
+              computedState = "COMPLETE";
+            } else if (detail.status === "failed") {
+              computedProgress = 100;
+              computedState = "FAILED";
+            } else if (newPatches.length > 0) {
+              computedProgress = Math.max(prev.progress, 90);
+              computedState = "PATCH_GEN";
+            } else if (newFindings.length > 0) {
+              computedProgress = Math.max(prev.progress, 65);
+              computedState = "AUDIT_FINDINGS";
+            } else if (newNodes.length > 2) {
+              computedProgress = Math.max(prev.progress, 45);
+              computedState = "PORT_RECON";
+            } else if (newNodes.length > 1) {
+              computedProgress = Math.max(prev.progress, 25);
+              computedState = "PASSIVE_OSINT";
+            } else {
+              computedProgress = Math.min(prev.progress + 2, 18);
+              computedState = "INIT";
+            }
+
+            // Generate synthetic logs if WebSocket was blocked
+            let updatedLogs = [...prev.logs];
+            if (detail.status === "completed" && !prev.logs.some((l) => l.message.includes("[COMPLETE]"))) {
+              updatedLogs.push({
+                id: `log-done-${Date.now()}`,
+                message: `[COMPLETE] Assessment finished! Compromise Risk Score: ${detail.risk_score}/100 (Grade: ${detail.compliance_grade})`,
+                level: "AGENT",
+                time: new Date().toLocaleTimeString(),
+              });
+            } else if (detail.status === "failed" && !prev.logs.some((l) => l.message.includes("[FAILED]"))) {
+              updatedLogs.push({
+                id: `log-fail-${Date.now()}`,
+                message: `[FAILED] Assessment stopped: ${detail.error_message || "Operation failed"}`,
+                level: "WARN",
+                time: new Date().toLocaleTimeString(),
+              });
+            } else if (newFindings.length > prev.findings.length) {
+              const diff = newFindings.length - prev.findings.length;
+              updatedLogs.push({
+                id: `log-f-${Date.now()}`,
+                message: `[AUDIT] Discovered ${diff} new vulnerability finding(s)...`,
+                level: "INFO",
+                time: new Date().toLocaleTimeString(),
+              });
+            } else if (newNodes.length > prev.nodes.length) {
+              const diff = newNodes.length - prev.nodes.length;
+              updatedLogs.push({
+                id: `log-n-${Date.now()}`,
+                message: `[SURFACE] Mapped ${diff} new attack-path node(s) and connections...`,
+                level: "INFO",
+                time: new Date().toLocaleTimeString(),
+              });
+            } else if (newPatches.length > prev.patches.length) {
+              const diff = newPatches.length - prev.patches.length;
+              updatedLogs.push({
+                id: `log-p-${Date.now()}`,
+                message: `[PATCHGEN] Synthesized ${diff} copy-paste defensive remediation patch(es)...`,
+                level: "AGENT",
+                time: new Date().toLocaleTimeString(),
+              });
+            }
+
+            return {
+              ...prev,
+              status: detail.status,
+              risk_score: detail.risk_score ?? prev.risk_score,
+              compliance_grade: detail.compliance_grade || prev.compliance_grade,
+              findings: newFindings,
+              nodes: newNodes,
+              edges: newEdges,
+              patches: newPatches,
+              logs: updatedLogs,
+              progress: computedProgress,
+              currentState: computedState,
+              error_message: detail.error_message,
+            };
+          });
+
+          if (detail.status === "completed" || detail.status === "failed") {
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            setIsLoading(false);
+          }
+        } catch (e) {
+          // Retry on next tick
+        }
+      }, 1000);
+
+      // 2. Connect to WebSocket for instant real-time event streaming if open
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsHost = process.env.NEXT_PUBLIC_WS_HOST || `${window.location.hostname}:8080`;
       const wsUrl =
         process.env.NEXT_PUBLIC_WS_URL ||
         `${wsProtocol}//${wsHost}/ws/scans/${scanId}`;
       
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        // Ping periodically to keep alive
-        const pingInterval = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send("ping");
-          } else {
-            clearInterval(pingInterval);
-          }
-        }, 10000);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          handleWebSocketEvent(msg);
-        } catch (e) {
-          // Plaintext ping/pong or raw message
+      try {
+        if (wsRef.current) {
+          wsRef.current.close();
         }
-      };
 
-      ws.onerror = (err) => {
-        console.warn("WebSocket stream error, fallback polling active:", err);
-      };
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
 
-      ws.onclose = () => {
-        setIsLoading(false);
-      };
+        ws.onopen = () => {
+          const pingInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send("ping");
+            } else {
+              clearInterval(pingInterval);
+            }
+          }, 10000);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            handleWebSocketEvent(msg);
+          } catch (e) {}
+        };
+
+        ws.onerror = (err) => {
+          console.warn("WebSocket unavailable or blocked by security group, polling active.");
+        };
+
+        ws.onclose = () => {
+          // If websocket closes, polling handles completion
+        };
+      } catch (wsErr) {
+        console.warn("WebSocket initialization skipped, falling back to polling.");
+      }
     } catch (err: any) {
       setIsLoading(false);
       setScanState((prev) => ({

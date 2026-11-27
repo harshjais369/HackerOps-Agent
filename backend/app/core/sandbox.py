@@ -70,7 +70,7 @@ class SandboxRunner:
                     stdout=True,
                     stderr=True
                 )
-                raw_out = await asyncio.wait_for(loop.run_in_executor(None, container_run), timeout=settings.sandbox_timeout_seconds)
+                raw_out = await asyncio.wait_for(loop.run_in_executor(None, container_run), timeout=min(settings.sandbox_timeout_seconds, 18.0))
                 decoded = raw_out.decode("utf-8")
                 parsed = json.loads(decoded)
                 return SandboxResult(success=True, output=decoded, data=parsed)

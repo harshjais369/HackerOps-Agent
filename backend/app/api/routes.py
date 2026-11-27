@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Response
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import asyncio
 import json
@@ -20,13 +21,26 @@ router = APIRouter(prefix="/api", tags=["Scans"])
 
 async def execute_agent_scan(scan_id: str):
     """Background task orchestrating autonomous scan execution."""
-    async with AsyncSessionLocal() as db:
-        res = await db.execute(select(Scan).where(Scan.id == scan_id))
-        scan = res.scalar_one_or_none()
-        if not scan:
-            return
-        agent = SecurityAgent(scan, db)
-        await agent.run()
+    try:
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(
+                select(Scan)
+                .options(
+                    selectinload(Scan.findings),
+                    selectinload(Scan.nodes),
+                    selectinload(Scan.edges),
+                    selectinload(Scan.patches)
+                )
+                .where(Scan.id == scan_id)
+            )
+            scan = res.scalar_one_or_none()
+            if not scan:
+                return
+            agent = SecurityAgent(scan, db)
+            await agent.run()
+    except Exception as e:
+        import logging
+        logging.getLogger("hackerops.routes").exception(f"Fatal error in execute_agent_scan {scan_id}: {e}")
 
 @router.get("/health")
 async def health_check():
@@ -71,7 +85,16 @@ async def list_scans(limit: int = 20, db: AsyncSession = Depends(get_db)):
 
 @router.get("/scans/{scan_id}", response_model=ScanDetail)
 async def get_scan_detail(scan_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    result = await db.execute(
+        select(Scan)
+        .options(
+            selectinload(Scan.findings),
+            selectinload(Scan.nodes),
+            selectinload(Scan.edges),
+            selectinload(Scan.patches)
+        )
+        .where(Scan.id == scan_id)
+    )
     scan = result.scalar_one_or_none()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -79,7 +102,14 @@ async def get_scan_detail(scan_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/scans/{scan_id}/report")
 async def generate_audit_report(scan_id: str, format: str = "markdown", db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    result = await db.execute(
+        select(Scan)
+        .options(
+            selectinload(Scan.findings),
+            selectinload(Scan.patches)
+        )
+        .where(Scan.id == scan_id)
+    )
     scan = result.scalar_one_or_none()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
