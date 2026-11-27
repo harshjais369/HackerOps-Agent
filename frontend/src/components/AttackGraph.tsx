@@ -44,7 +44,7 @@ const ServiceNodeComponent = ({ data }: NodeProps) => (
   </div>
 );
 
-// 3. Port Node (Level 2)
+// 3. Port Node (Level 1 / Network)
 const PortNodeComponent = ({ data }: NodeProps) => (
   <div className="px-3 py-2 bg-[#161B22] border border-teal-500/80 hover:border-teal-400 rounded-lg shadow w-[130px] text-center">
     <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-teal-400" />
@@ -59,7 +59,7 @@ const PortNodeComponent = ({ data }: NodeProps) => (
   </div>
 );
 
-// 4. Vulnerability Node (Level 3 - Fixed width, guaranteed zero overlapping)
+// 4. Vulnerability Node (Level 2 - Fixed width, non-overlapping)
 const VulnNodeComponent = ({ data }: NodeProps) => {
   const sev = (data.severity as string) || "MEDIUM";
   const borderCol =
@@ -102,7 +102,7 @@ const VulnNodeComponent = ({ data }: NodeProps) => {
   );
 };
 
-// 5. Exploit Chain Impact Node (Level 4)
+// 5. Exploit Chain Impact Node
 const ImpactNodeComponent = ({ data }: NodeProps) => (
   <div className="px-4 py-2.5 bg-purple-950/60 border-2 border-purple-500 rounded-xl shadow-2xl text-center w-[250px] animate-pulse">
     <Handle type="target" position={Position.Top} className="w-2.5 h-2.5 !bg-purple-400" />
@@ -132,81 +132,165 @@ interface AttackGraphProps {
 export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges: rawEdges }) => {
   const [selectedNode, setSelectedNode] = useState<GraphNodeData | null>(null);
 
-  // Pure hierarchical top-to-bottom Tree Layout: Target -> Services -> Ports -> Vulnerabilities -> Impact
-  const layoutedNodes: Node[] = useMemo(() => {
-    if (!rawNodes || rawNodes.length === 0) return [];
+  // Subtree-Oriented Hierarchical Layout:
+  // Root Target -> [DNS Column (Left)] | [Web Security Column (Center)] | [Ports & Surface (Right)]
+  const { layoutedNodes, completeEdges } = useMemo(() => {
+    if (!rawNodes || rawNodes.length === 0) return { layoutedNodes: [], completeEdges: [] };
 
-    const nodeLevels: Record<string, number> = {
-      target: 0,
-      service: 1,
-      port: 2,
-      vulnerability: 3,
-      impact: 4,
-    };
+    // Deep copy nodes to prevent mutating state
+    const allNodes: GraphNodeData[] = [...rawNodes];
+    const allEdges: GraphEdgeData[] = [...rawEdges];
 
-    // Separate spacing per tier so nodes never collide
-    const tierSpacingX: Record<number, number> = {
-      0: 220,
-      1: 220, // Services
-      2: 180, // Ports
-      3: 260, // Vulnerabilities: 210px width + 50px generous gap!
-      4: 280, // Impact
-    };
+    // Find Root Target Node
+    const rootNode = allNodes.find((n) => n.node_type === "target") || allNodes[0];
 
-    const tierY: Record<number, number> = {
-      0: 40,  // Target
-      1: 160, // Services (DNS, TLS, Surface)
-      2: 275, // Ports (Port 80, Port 443)
-      3: 410, // Vulnerability findings row
-      4: 550, // Impact
-    };
+    // Check if DNS node exists, if missing create a fallback so DNS findings are never orphaned
+    let dnsNode = allNodes.find((n) => n.id.startsWith("dns-") || n.label.toLowerCase().includes("dns"));
+    if (!dnsNode && allNodes.some((n) => n.label.includes("SPF") || n.label.includes("DMARC"))) {
+      dnsNode = {
+        id: `dns-auto-${rootNode.id}`,
+        node_type: "service",
+        label: "DNS Zone",
+        severity: "INFO",
+      };
+      allNodes.push(dnsNode);
+      allEdges.push({
+        id: `edge-auto-target-dns`,
+        source_id: rootNode.id,
+        target_id: dnsNode.id,
+        label: "Resolves via",
+      });
+    }
 
-    // Group by level
-    const groups: Record<number, GraphNodeData[]> = {};
-    rawNodes.forEach((node) => {
-      const lvl = nodeLevels[node.node_type] ?? 2;
-      if (!groups[lvl]) groups[lvl] = [];
-      groups[lvl].push(node);
+    const tlsNode = allNodes.find((n) => n.id.startsWith("tls-") || n.label.toLowerCase().includes("security") || n.label.toLowerCase().includes("tls"));
+    const surfaceNode = allNodes.find((n) => n.id.startsWith("surface-"));
+    const portNodes = allNodes.filter((n) => n.node_type === "port");
+    const impactNodes = allNodes.filter((n) => n.node_type === "impact");
+    const vulnNodes = allNodes.filter((n) => n.node_type === "vulnerability");
+
+    // Partition findings by their respective domain
+    const dnsChildren: GraphNodeData[] = [];
+    const tlsChildren: GraphNodeData[] = [];
+    const portChildren: GraphNodeData[] = [];
+
+    vulnNodes.forEach((v) => {
+      // Connect to DNS if it is an SPF/DMARC/CNAME finding
+      if (v.label.includes("SPF") || v.label.includes("DMARC") || v.label.includes("CNAME") || v.label.includes("DNS")) {
+        dnsChildren.push(v);
+        // Ensure edge exists
+        if (dnsNode && !allEdges.some((e) => e.target_id === v.id)) {
+          allEdges.push({ id: `edge-auto-dns-${v.id}`, source_id: dnsNode.id, target_id: v.id });
+        }
+      } else if (v.node_metadata?.port) {
+        portChildren.push(v);
+      } else {
+        tlsChildren.push(v);
+        // Ensure edge exists to TLS node
+        if (tlsNode && !allEdges.some((e) => e.target_id === v.id)) {
+          allEdges.push({ id: `edge-auto-tls-${v.id}`, source_id: tlsNode.id, target_id: v.id });
+        }
+      }
     });
 
     const result: Node[] = [];
-    const centerX = 550;
+    const centerX = 640;
 
-    Object.entries(groups).forEach(([lvlStr, groupNodes]) => {
-      const lvl = parseInt(lvlStr);
-      const totalInGroup = groupNodes.length;
-      const xSpacing = tierSpacingX[lvl] || 240;
-      const startX = centerX - ((totalInGroup - 1) * xSpacing) / 2;
+    // 1. Root Target Node (Level 0 - Top Center)
+    result.push({
+      id: rootNode.id,
+      type: rootNode.node_type,
+      position: { x: centerX - 90, y: 30 },
+      data: { label: rootNode.label, severity: rootNode.severity, node_metadata: rootNode.node_metadata, rawNode: rootNode },
+    });
 
-      groupNodes.forEach((n, idx) => {
-        // Half-width offset so the box is centered around the coordinate
-        const nodeWidth = lvl === 0 ? 180 : lvl === 1 ? 160 : lvl === 2 ? 130 : lvl === 3 ? 210 : 250;
+    // 2. Column 1: DNS Subtree (Left Side - centered at ~190)
+    const col1X = 200;
+    if (dnsNode) {
+      result.push({
+        id: dnsNode.id,
+        type: dnsNode.node_type,
+        position: { x: col1X - 80, y: 150 },
+        data: { label: dnsNode.label, severity: dnsNode.severity, node_metadata: dnsNode.node_metadata, rawNode: dnsNode },
+      });
+
+      // DNS Findings directly underneath DNS Zone
+      const dnsChildSpacing = 225;
+      const dnsStartX = col1X - ((dnsChildren.length - 1) * dnsChildSpacing) / 2;
+      dnsChildren.forEach((child, idx) => {
         result.push({
-          id: n.id,
-          type: n.node_type,
-          position: {
-            x: startX + idx * xSpacing - nodeWidth / 2,
-            y: tierY[lvl] ?? (40 + lvl * 130),
-          },
-          data: {
-            label: n.label,
-            severity: n.severity,
-            node_metadata: n.node_metadata,
-            rawNode: n,
-          },
+          id: child.id,
+          type: child.node_type,
+          position: { x: dnsStartX + idx * dnsChildSpacing - 105, y: 280 },
+          data: { label: child.label, severity: child.severity, node_metadata: child.node_metadata, rawNode: child },
         });
+      });
+    }
+
+    // 3. Column 2: Web Security Subtree (Center - centered at ~640)
+    const col2X = 640;
+    if (tlsNode) {
+      result.push({
+        id: tlsNode.id,
+        type: tlsNode.node_type,
+        position: { x: col2X - 80, y: 150 },
+        data: { label: tlsNode.label, severity: tlsNode.severity, node_metadata: tlsNode.node_metadata, rawNode: tlsNode },
+      });
+
+      // Header/TLS Findings directly underneath Web Security (up to 3 per row)
+      const maxTlsPerRow = 3;
+      const tlsSpacingX = 230;
+      const tlsSpacingY = 95;
+      tlsChildren.forEach((child, idx) => {
+        const row = Math.floor(idx / maxTlsPerRow);
+        const col = idx % maxTlsPerRow;
+        const countInRow = Math.min(maxTlsPerRow, tlsChildren.length - row * maxTlsPerRow);
+        const startX = col2X - ((countInRow - 1) * tlsSpacingX) / 2;
+        result.push({
+          id: child.id,
+          type: child.node_type,
+          position: { x: startX + col * tlsSpacingX - 105, y: 280 + row * tlsSpacingY },
+          data: { label: child.label, severity: child.severity, node_metadata: child.node_metadata, rawNode: child },
+        });
+      });
+    }
+
+    // 4. Column 3: Ports & Surface (Right Side - centered at ~1100)
+    const col3X = 1100;
+    const netNodes = [...portNodes, ...(surfaceNode ? [surfaceNode] : [])];
+    const netSpacing = 160;
+    const netStartX = col3X - ((netNodes.length - 1) * netSpacing) / 2;
+
+    netNodes.forEach((node, idx) => {
+      const nodeWidth = node.node_type === "port" ? 130 : 160;
+      result.push({
+        id: node.id,
+        type: node.node_type,
+        position: { x: netStartX + idx * netSpacing - nodeWidth / 2, y: 150 },
+        data: { label: node.label, severity: node.severity, node_metadata: node.node_metadata, rawNode: node },
       });
     });
 
-    return result;
-  }, [rawNodes]);
+    // 5. Exploit Chain Impact (Bottom Center)
+    const tlsRows = Math.ceil(tlsChildren.length / 3) || 1;
+    const impactY = 280 + tlsRows * 95 + 35;
+    impactNodes.forEach((impact, idx) => {
+      result.push({
+        id: impact.id,
+        type: impact.node_type,
+        position: { x: col2X - 125 + idx * 260, y: impactY },
+        data: { label: impact.label, severity: impact.severity, node_metadata: impact.node_metadata, rawNode: impact },
+      });
+    });
+
+    return { layoutedNodes: result, completeEdges: allEdges };
+  }, [rawNodes, rawEdges]);
 
   // Clean, natural curved tree branches with directional arrowheads
   const flowEdges: Edge[] = useMemo(() => {
     const nodeMap = new Map<string, GraphNodeData>();
     rawNodes.forEach((n) => nodeMap.set(n.id, n));
 
-    return rawEdges.map((e) => {
+    return completeEdges.map((e) => {
       const targetNode = nodeMap.get(e.target_id);
       const sourceNode = nodeMap.get(e.source_id);
       const targetType = targetNode?.node_type || "vulnerability";
@@ -216,10 +300,10 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
       let strokeWidth = 1.75;
       let isAnimated = true;
 
-      // Color-code lines so relationships are instantly identifiable
+      // Color-code branches so relationships are instantly clear
       if (sourceNode?.node_type === "target") {
-        strokeColor = "#38BDF8"; // Sky blue for Target -> Infra
-        strokeWidth = 1.75;
+        strokeColor = "#38BDF8"; // Sky blue from Target
+        strokeWidth = 2;
       } else if (targetType === "impact") {
         strokeColor = "#A855F7"; // Purple for Exploit Chain
         strokeWidth = 2.5;
@@ -245,7 +329,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
         }
       }
 
-      // Hide repetitive "Exposes Flaw" text pills that clutter lines; keep key structural labels
+      // Hide repetitive text tags like "Exposes Flaw" that clutter the tree lines
       const shouldShowLabel = e.label && e.label !== "Exposes Flaw" && e.label !== "Exposes";
 
       return {
@@ -282,7 +366,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
         labelBgPadding: [4, 2] as [number, number],
       };
     });
-  }, [rawNodes, rawEdges]);
+  }, [rawNodes, completeEdges]);
 
   return (
     <div className="relative w-full h-full min-h-[460px] bg-[#0A0D14] border border-[#1F2937] rounded-xl overflow-hidden shadow-2xl flex flex-col">
@@ -340,7 +424,6 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
           >
             <Background color="#1F2937" gap={20} size={1} />
             <Controls />
-            {/* Note: MiniMap removed to eliminate empty black box */}
           </ReactFlow>
         )}
       </div>

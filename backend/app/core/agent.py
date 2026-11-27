@@ -147,6 +147,7 @@ class SecurityAgent:
             # Root Node in Attack Graph
             root_node_id = f"target-{self.scan_id[:8]}"
             await self.emit_node(root_node_id, "target", f"Target: {self.target_host}", "INFO", {"url": self.target_url, "ip": self.scan.resolved_ip})
+            await asyncio.sleep(0.5)
 
             # --- STEP 2: PASSIVE_OSINT ---
             await self.emit_log(f"[OSINT] Querying DNS zone records, SPF, DMARC, and checking CNAME dangling takeover indicators...", "INFO")
