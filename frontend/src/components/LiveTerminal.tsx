@@ -80,20 +80,19 @@ export const LiveTerminal: React.FC<LiveTerminalProps> = ({ logs, status, onClea
       {/* Terminal Scroll Area */}
       <div
         ref={scrollRef}
-        className="flex-1 p-4 font-mono text-xs overflow-y-auto space-y-1.5 select-text selection:bg-emerald-900 selection:text-white"
-        style={{ minHeight: "260px" }}
+        className="flex-1 p-4 font-mono text-xs overflow-y-auto space-y-2 select-text selection:bg-emerald-900 selection:text-white"
       >
         {logs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-gray-500 space-y-2">
+          <div className="flex flex-col items-center justify-center h-full min-h-[220px] text-gray-500 space-y-2">
             <Terminal className="w-8 h-8 opacity-40 text-emerald-500" />
             <p className="text-xs">Awaiting autonomous scan target initialization...</p>
             <p className="text-[11px] text-gray-600">Enter a target URL above to observe real-time agent thoughts.</p>
           </div>
         ) : (
           logs.map((log) => (
-            <div key={log.id} className="leading-relaxed flex items-start gap-2.5 hover:bg-[#161B22]/50 px-1 py-0.5 rounded">
-              <span className="text-gray-600 select-none text-[11px] shrink-0 font-mono">[{log.time}]</span>
-              <span className={`break-all ${getTagColor(log.message, log.level)}`}>
+            <div key={log.id} className="leading-relaxed flex items-start gap-2.5 hover:bg-[#161B22]/50 px-1.5 py-1 rounded transition-colors">
+              <span className="text-gray-500 select-none text-[11px] shrink-0 font-mono">[{log.time}]</span>
+              <span className={`break-words whitespace-pre-wrap ${getTagColor(log.message, log.level)}`}>
                 {log.message}
               </span>
             </div>

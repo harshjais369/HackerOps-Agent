@@ -69,7 +69,7 @@ export const RiskMetrics: React.FC<RiskMetricsProps> = ({
 
         <div className="my-2 flex items-center gap-3">
           <div
-            className={`w-11 h-11 rounded-lg border-2 flex items-center justify-center font-mono font-black text-2xl shadow-inner ${
+            className={`w-10 h-10 shrink-0 rounded-lg border-2 flex items-center justify-center font-mono font-black text-xl shadow-inner ${
               complianceGrade.startsWith("A")
                 ? "border-emerald-500 text-emerald-400 bg-emerald-950/40"
                 : complianceGrade.startsWith("B")
@@ -81,16 +81,16 @@ export const RiskMetrics: React.FC<RiskMetricsProps> = ({
           >
             {complianceGrade || "A"}
           </div>
-          <div className="text-[11px] text-gray-400 leading-tight">
+          <div className="text-[11px] text-gray-300 leading-snug">
             {complianceGrade.startsWith("A")
-              ? "Defensive baseline meets stringent enterprise hygiene standards."
-              : "Security misconfigurations detected requiring prompt patch application."}
+              ? "Defensive baseline meets enterprise hygiene standards."
+              : "Security misconfigurations detected; patch recommended."}
           </div>
         </div>
 
         <div className="text-[10px] font-mono text-gray-500 flex justify-between">
           <span>PCI-DSS v4.0</span>
-          <span className={criticals === 0 ? "text-emerald-400" : "text-red-400"}>
+          <span className={criticals === 0 ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>
             {criticals === 0 ? "PASSED" : "FAILED REQS"}
           </span>
         </div>

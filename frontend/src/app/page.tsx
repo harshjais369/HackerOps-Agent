@@ -342,8 +342,8 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-[#0B0F19] flex flex-col">
       {/* Top Navigation Bar */}
-      <header className="border-b border-[#1F2937] bg-[#111827]/80 backdrop-blur-md sticky top-0 z-30 px-6 py-3.5">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <header className="border-b border-[#1F2937] bg-[#111827]/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 lg:px-8 py-3.5">
+        <div className="w-full max-w-[1920px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center glow-emerald">
               <Shield className="w-5 h-5 text-emerald-400" />
@@ -415,26 +415,26 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6">
+      <div className="flex-1 w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* 1. Target URL Input Form */}
         <ScanForm onStartScan={startScan} isLoading={isLoading} />
 
-        {/* 2. Middle Section: Attack Graph (60%) & Live Terminal + Risk Metrics (40%) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Main Left: Interactive Attack Graph (60%) */}
-          <div className="lg:col-span-7 flex flex-col h-[560px]">
+        {/* 2. Middle Section: Attack Graph (65%) & Live Terminal + Risk Metrics (35%) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          {/* Main Left: Interactive Attack Graph */}
+          <div className="lg:col-span-7 xl:col-span-7 flex flex-col h-[640px] xl:h-[680px]">
             <AttackGraph nodes={scanState.nodes} edges={scanState.edges} />
           </div>
 
-          {/* Main Right: Metrics (Top) & Terminal (Bottom) (40%) */}
-          <div className="lg:col-span-5 flex flex-col h-[560px] gap-4">
+          {/* Main Right: Metrics (Top) & Terminal (Bottom) */}
+          <div className="lg:col-span-5 xl:col-span-5 flex flex-col h-[640px] xl:h-[680px] gap-4">
             <RiskMetrics
               riskScore={scanState.risk_score}
               complianceGrade={scanState.compliance_grade}
               findings={scanState.findings}
             />
 
-            <div className="flex-1 min-h-[300px]">
+            <div className="flex-1 min-h-[380px] overflow-hidden">
               <LiveTerminal
                 logs={scanState.logs}
                 status={scanState.status}

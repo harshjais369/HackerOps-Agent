@@ -132,12 +132,12 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
     });
 
     const result: Node[] = [];
-    const levelYSpacing = 160;
+    const levelYSpacing = 125;
 
     Object.entries(groups).forEach(([lvlStr, groupNodes]) => {
       const lvl = parseInt(lvlStr);
       const totalInGroup = groupNodes.length;
-      const xSpacing = 220;
+      const xSpacing = 210;
       const startX = -((totalInGroup - 1) * xSpacing) / 2 + 350;
 
       groupNodes.forEach((n, idx) => {
@@ -146,7 +146,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
           type: n.node_type,
           position: {
             x: startX + idx * xSpacing,
-            y: 50 + lvl * levelYSpacing,
+            y: 40 + lvl * levelYSpacing,
           },
           data: {
             label: n.label,
@@ -219,6 +219,9 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
             edges={flowEdges}
             nodeTypes={nodeTypes}
             fitView
+            fitViewOptions={{ padding: 0.15 }}
+            minZoom={0.2}
+            maxZoom={1.5}
             attributionPosition="bottom-left"
             onNodeClick={(_, node) => setSelectedNode(node.data.rawNode as GraphNodeData)}
           >
