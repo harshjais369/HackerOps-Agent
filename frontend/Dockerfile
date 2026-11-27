@@ -15,6 +15,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+ARG NEXT_PUBLIC_WS_PORT=8080
+ENV NEXT_PUBLIC_WS_PORT=$NEXT_PUBLIC_WS_PORT
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
