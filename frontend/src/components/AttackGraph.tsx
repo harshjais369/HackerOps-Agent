@@ -15,9 +15,9 @@ import {
 import { Shield, Globe, Server, AlertTriangle, Flame, Network, X } from "lucide-react";
 import { GraphNodeData, GraphEdgeData } from "@/lib/types";
 
-// Custom Target Node
+// 1. Target Node (Level 0)
 const TargetNodeComponent = ({ data }: NodeProps) => (
-  <div className="px-4 py-2.5 bg-[#0B0F19] border-2 border-emerald-500 rounded-xl shadow-lg glow-emerald text-center w-[190px]">
+  <div className="px-4 py-2.5 bg-[#0B0F19] border-2 border-emerald-500 rounded-xl shadow-lg glow-emerald text-center w-[180px]">
     <Handle type="source" position={Position.Bottom} className="w-2.5 h-2.5 !bg-emerald-400" />
     <div className="flex items-center justify-center gap-1.5 text-emerald-400 mb-0.5 font-bold text-[10px] uppercase tracking-wider font-mono">
       <Globe className="w-3.5 h-3.5" />
@@ -29,7 +29,7 @@ const TargetNodeComponent = ({ data }: NodeProps) => (
   </div>
 );
 
-// Custom Service Node
+// 2. Service Node (Level 1)
 const ServiceNodeComponent = ({ data }: NodeProps) => (
   <div className="px-3 py-2 bg-[#111827] border border-sky-500/80 rounded-lg shadow-md w-[160px] text-center">
     <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-sky-400" />
@@ -44,7 +44,7 @@ const ServiceNodeComponent = ({ data }: NodeProps) => (
   </div>
 );
 
-// Custom Port Node
+// 3. Port Node (Level 2)
 const PortNodeComponent = ({ data }: NodeProps) => (
   <div className="px-3 py-2 bg-[#161B22] border border-teal-500/80 hover:border-teal-400 rounded-lg shadow w-[130px] text-center">
     <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-teal-400" />
@@ -59,7 +59,7 @@ const PortNodeComponent = ({ data }: NodeProps) => (
   </div>
 );
 
-// Custom Vulnerability Node (Fixed width, clean typography, non-overlapping)
+// 4. Vulnerability Node (Level 3 - Fixed width, guaranteed zero overlapping)
 const VulnNodeComponent = ({ data }: NodeProps) => {
   const sev = (data.severity as string) || "MEDIUM";
   const borderCol =
@@ -81,7 +81,7 @@ const VulnNodeComponent = ({ data }: NodeProps) => {
       : "!bg-blue-400";
 
   return (
-    <div className={`px-3 py-2 border rounded-xl shadow-xl w-[230px] ${borderCol}`}>
+    <div className={`px-3 py-2 border rounded-xl shadow-xl w-[210px] ${borderCol}`}>
       <Handle type="target" position={Position.Top} className={`w-2 h-2 ${handleColor}`} />
       <Handle type="source" position={Position.Bottom} className="w-2 h-2 !bg-purple-400" />
       <div className="flex items-center justify-between text-[10px] font-mono font-black mb-1">
@@ -102,7 +102,7 @@ const VulnNodeComponent = ({ data }: NodeProps) => {
   );
 };
 
-// Custom Chained Impact Node
+// 5. Exploit Chain Impact Node (Level 4)
 const ImpactNodeComponent = ({ data }: NodeProps) => (
   <div className="px-4 py-2.5 bg-purple-950/60 border-2 border-purple-500 rounded-xl shadow-2xl text-center w-[250px] animate-pulse">
     <Handle type="target" position={Position.Top} className="w-2.5 h-2.5 !bg-purple-400" />
@@ -132,94 +132,76 @@ interface AttackGraphProps {
 export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges: rawEdges }) => {
   const [selectedNode, setSelectedNode] = useState<GraphNodeData | null>(null);
 
-  // Structured multi-tier layout: Target (Tier 0) -> Infrastructure & Ports (Tier 1) -> Vulnerabilities (Tier 2 Multi-Row) -> Impact (Tier 3)
+  // Pure hierarchical top-to-bottom Tree Layout: Target -> Services -> Ports -> Vulnerabilities -> Impact
   const layoutedNodes: Node[] = useMemo(() => {
     if (!rawNodes || rawNodes.length === 0) return [];
 
+    const nodeLevels: Record<string, number> = {
+      target: 0,
+      service: 1,
+      port: 2,
+      vulnerability: 3,
+      impact: 4,
+    };
+
+    // Separate spacing per tier so nodes never collide
+    const tierSpacingX: Record<number, number> = {
+      0: 220,
+      1: 220, // Services
+      2: 180, // Ports
+      3: 260, // Vulnerabilities: 210px width + 50px generous gap!
+      4: 280, // Impact
+    };
+
+    const tierY: Record<number, number> = {
+      0: 40,  // Target
+      1: 160, // Services (DNS, TLS, Surface)
+      2: 275, // Ports (Port 80, Port 443)
+      3: 410, // Vulnerability findings row
+      4: 550, // Impact
+    };
+
+    // Group by level
+    const groups: Record<number, GraphNodeData[]> = {};
+    rawNodes.forEach((node) => {
+      const lvl = nodeLevels[node.node_type] ?? 2;
+      if (!groups[lvl]) groups[lvl] = [];
+      groups[lvl].push(node);
+    });
+
     const result: Node[] = [];
+    const centerX = 550;
 
-    const targetNodes = rawNodes.filter((n) => n.node_type === "target");
-    const serviceNodes = rawNodes.filter((n) => n.node_type === "service");
-    const portNodes = rawNodes.filter((n) => n.node_type === "port");
-    const vulnNodes = rawNodes.filter((n) => n.node_type === "vulnerability");
-    const impactNodes = rawNodes.filter((n) => n.node_type === "impact");
+    Object.entries(groups).forEach(([lvlStr, groupNodes]) => {
+      const lvl = parseInt(lvlStr);
+      const totalInGroup = groupNodes.length;
+      const xSpacing = tierSpacingX[lvl] || 240;
+      const startX = centerX - ((totalInGroup - 1) * xSpacing) / 2;
 
-    const centerX = 500;
-
-    // 1. Target Node (Tier 0)
-    targetNodes.forEach((n) => {
-      result.push({
-        id: n.id,
-        type: n.node_type,
-        position: { x: centerX - 95, y: 30 },
-        data: { label: n.label, severity: n.severity, node_metadata: n.node_metadata, rawNode: n },
-      });
-    });
-
-    // 2. Infrastructure: Services + Ports in a single horizontal tier (Tier 1)
-    const infraNodes = [...serviceNodes, ...portNodes];
-    const totalInfra = infraNodes.length;
-    const infraSpacing = 180;
-    const infraStartX = centerX - ((totalInfra - 1) * infraSpacing) / 2 - 80;
-
-    infraNodes.forEach((n, idx) => {
-      result.push({
-        id: n.id,
-        type: n.node_type,
-        position: {
-          x: infraStartX + idx * infraSpacing,
-          y: 140,
-        },
-        data: { label: n.label, severity: n.severity, node_metadata: n.node_metadata, rawNode: n },
-      });
-    });
-
-    // 3. Vulnerability Findings in structured rows (Tier 2 - Max 3 per row to prevent overlaps)
-    const totalVulns = vulnNodes.length;
-    const maxPerRow = totalVulns > 4 ? 3 : totalVulns;
-    const vulnSpacingX = 260; // 230px card + 30px gap
-    const vulnSpacingY = 100;
-
-    vulnNodes.forEach((n, idx) => {
-      const row = Math.floor(idx / maxPerRow);
-      const col = idx % maxPerRow;
-      const countInThisRow = Math.min(maxPerRow, totalVulns - row * maxPerRow);
-      const rowStartX = centerX - ((countInThisRow - 1) * vulnSpacingX) / 2 - 115;
-
-      result.push({
-        id: n.id,
-        type: n.node_type,
-        position: {
-          x: rowStartX + col * vulnSpacingX,
-          y: 260 + row * vulnSpacingY,
-        },
-        data: { label: n.label, severity: n.severity, node_metadata: n.node_metadata, rawNode: n },
-      });
-    });
-
-    // 4. Impact Nodes (Tier 3)
-    const vulnRows = Math.ceil(totalVulns / maxPerRow) || 1;
-    const impactY = 260 + vulnRows * vulnSpacingY + 20;
-    const totalImpact = impactNodes.length;
-    const impactSpacing = 280;
-    const impactStartX = centerX - ((totalImpact - 1) * impactSpacing) / 2 - 125;
-
-    impactNodes.forEach((n, idx) => {
-      result.push({
-        id: n.id,
-        type: n.node_type,
-        position: {
-          x: impactStartX + idx * impactSpacing,
-          y: impactY,
-        },
-        data: { label: n.label, severity: n.severity, node_metadata: n.node_metadata, rawNode: n },
+      groupNodes.forEach((n, idx) => {
+        // Half-width offset so the box is centered around the coordinate
+        const nodeWidth = lvl === 0 ? 180 : lvl === 1 ? 160 : lvl === 2 ? 130 : lvl === 3 ? 210 : 250;
+        result.push({
+          id: n.id,
+          type: n.node_type,
+          position: {
+            x: startX + idx * xSpacing - nodeWidth / 2,
+            y: tierY[lvl] ?? (40 + lvl * 130),
+          },
+          data: {
+            label: n.label,
+            severity: n.severity,
+            node_metadata: n.node_metadata,
+            rawNode: n,
+          },
+        });
       });
     });
 
     return result;
   }, [rawNodes]);
 
-  // Color-coded, arrow-directed, smoothstep edges to clearly distinguish connections
+  // Clean, natural curved tree branches with directional arrowheads
   const flowEdges: Edge[] = useMemo(() => {
     const nodeMap = new Map<string, GraphNodeData>();
     rawNodes.forEach((n) => nodeMap.set(n.id, n));
@@ -230,20 +212,18 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
       const targetType = targetNode?.node_type || "vulnerability";
       const targetSev = targetNode?.severity || "MEDIUM";
 
-      let strokeColor = "#10B981"; // default emerald
-      let strokeWidth = 2;
+      let strokeColor = "#10B981"; // Default emerald
+      let strokeWidth = 1.75;
       let isAnimated = true;
 
+      // Color-code lines so relationships are instantly identifiable
       if (sourceNode?.node_type === "target") {
-        // Target -> Infrastructure (Sky Blue)
-        strokeColor = "#38BDF8";
+        strokeColor = "#38BDF8"; // Sky blue for Target -> Infra
         strokeWidth = 1.75;
       } else if (targetType === "impact") {
-        // Escalation to Exploit Chain (Royal Purple)
-        strokeColor = "#A855F7";
+        strokeColor = "#A855F7"; // Purple for Exploit Chain
         strokeWidth = 2.5;
       } else if (targetType === "vulnerability") {
-        // Exposes Flaw -> Severity color
         switch (targetSev) {
           case "CRITICAL":
             strokeColor = "#EF4444";
@@ -255,7 +235,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
             break;
           case "MEDIUM":
             strokeColor = "#EAB308";
-            strokeWidth = 2;
+            strokeWidth = 1.75;
             break;
           case "LOW":
           default:
@@ -265,11 +245,13 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
         }
       }
 
+      // Hide repetitive "Exposes Flaw" text pills that clutter lines; keep key structural labels
+      const shouldShowLabel = e.label && e.label !== "Exposes Flaw" && e.label !== "Exposes";
+
       return {
         id: e.id,
         source: e.source_id,
         target: e.target_id,
-        type: "smoothstep",
         animated: isAnimated,
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -282,7 +264,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
           strokeWidth,
           strokeDasharray: isAnimated ? "5 4" : undefined,
         },
-        label: e.label,
+        label: shouldShowLabel ? e.label : undefined,
         labelStyle: {
           fill: strokeColor,
           fontSize: 10,
@@ -358,7 +340,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({ nodes: rawNodes, edges
           >
             <Background color="#1F2937" gap={20} size={1} />
             <Controls />
-            {/* Note: MiniMap removed to eliminate the empty black box artifact */}
+            {/* Note: MiniMap removed to eliminate empty black box */}
           </ReactFlow>
         )}
       </div>
