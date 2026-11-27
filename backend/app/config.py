@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from pydantic import field_validator
+from typing import List, Union
+import json
 import os
 
 class Settings(BaseSettings):
@@ -29,10 +31,26 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # CORS
-    cors_origins: List[str] = [
+    cors_origins: Union[List[str], str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8000"
     ]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            if v_stripped.startswith("[") and v_stripped.endswith("]"):
+                try:
+                    return json.loads(v_stripped)
+                except Exception:
+                    pass
+            # Comma-separated list support (e.g. "http://localhost:3000,http://127.0.0.1:3000")
+            return [i.strip() for i in v_stripped.split(",") if i.strip()]
+        elif isinstance(v, list):
+            return v
+        return ["*"]
 
 settings = Settings()
