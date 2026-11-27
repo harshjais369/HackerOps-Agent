@@ -1,0 +1,9 @@
+# Frontend Docker Context Ignore
+node_modules
+.next
+out
+.git
+.gitignore
+.env
+npm-debug.log*
+*.tsbuildinfo

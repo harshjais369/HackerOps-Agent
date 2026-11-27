@@ -1,0 +1,33 @@
+# Isolated, unprivileged sandbox image for read-only security probes
+FROM alpine:3.20
+
+# Install non-destructive scanning & inspection utilities
+RUN apk update && apk add --no-cache \
+    python3 \
+    py3-pip \
+    curl \
+    nmap \
+    nmap-scripts \
+    bind-tools \
+    openssl \
+    ca-certificates \
+    shadow \
+    && rm -rf /var/cache/apk/*
+
+# Install python dependencies for safe wrappers
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir dnspython httpx pydantic
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Create unprivileged security audit user
+RUN useradd -m -s /bin/sh -u 1001 sandboxuser
+
+WORKDIR /home/sandboxuser
+COPY scripts/ /home/sandboxuser/scripts/
+RUN chown -R sandboxuser:sandboxuser /home/sandboxuser && \
+    chmod +x /home/sandboxuser/scripts/*.sh /home/sandboxuser/scripts/*.py 2>/dev/null || true
+
+USER sandboxuser
+
+ENTRYPOINT ["python3"]
