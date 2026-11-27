@@ -1,12 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
-  outputFileTracing: false,
+  swcMinify: true,
   typescript: {
     ignoreBuildErrors: true,
   },
   eslint: {
     ignoreDuringBuilds: true,
+  },
+  experimental: {
+    cpus: 1,
   },
   async rewrites() {
     const backendInternal = process.env.BACKEND_INTERNAL_URL || 'http://backend:8000';
