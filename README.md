@@ -6,6 +6,7 @@
 [![Docker](https://img.shields.io/badge/Isolation-Docker%20Sandbox-2496ED.svg?style=flat&logo=docker)](https://docker.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
+
 **HackerOps Agent** is an enterprise-grade, closed-loop cybersecurity web application. Given a target URL or domain, it autonomously conducts strictly read-only, non-destructive reconnaissance and vulnerability audits, streams real-time agent reasoning and live attack-path graph nodes over WebSockets, calculates compromise risk & compliance scores (OWASP Top 10, PCI-DSS), and synthesizes copy-paste-ready defensive patches (`nginx.conf`, middleware, DNS TXT, `.env` hardening).
 
 ---
@@ -37,7 +38,7 @@
 ## 📂 Repository Structure
 
 ```text
-aegis-agent/
+HackerOps-Agent/
 ├── docker-compose.yml          # Orchestrates backend, frontend, redis, and sandbox
 ├── .env.example                # Configuration parameters & safety overrides
 ├── .gitignore                  # Git ignore rules for Python, Node, Next.js, and DBs
